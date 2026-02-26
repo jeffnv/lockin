@@ -193,7 +193,7 @@ func rainbowColor(value, total int) lipgloss.Color {
 }
 
 func rainbowColorL(value, total int, lightness float64) lipgloss.Color {
-	h := float64(value) / float64(total)
+	h := float64(value) / float64(total) * 0.85 // stop before wrapping back to red
 	r, g, b := hslToRGB(hsl{h, 1.0, lightness})
 	return lipgloss.Color(rgbToHex(r, g, b))
 }
@@ -278,11 +278,11 @@ func (m model) renderSort() string {
 			var l float64
 			switch {
 			case glow[i] > 0.66:
-				l = 0.75
+				l = 0.7
 			case glow[i] > 0.33:
-				l = 0.62
-			default:
 				l = 0.5
+			default:
+				l = 0.3
 			}
 			color := rainbowColorL(frame[i], total, l)
 			row.WriteString(lipgloss.NewStyle().Foreground(color).Render("██"))

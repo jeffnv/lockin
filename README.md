@@ -32,6 +32,8 @@ lockin 30m "deep work"                        # with a task label
 lockin 25m --block Safari,Messages,Discord    # kill distracting apps
 lockin 1h --viz defrag                        # with progress visualization
 lockin 25m --font slim --viz binary           # slim font + BCD display
+lockin 25m --viz bubble                       # bubble sort animation
+lockin 25m --viz quick                        # quicksort animation
 ```
 
 ## Flags
@@ -39,7 +41,7 @@ lockin 25m --font slim --viz binary           # slim font + BCD display
 | Flag | Options | Description |
 |---|---|---|
 | `--block` | `App1,App2,...` | Kill listed apps every 5s while the timer runs |
-| `--viz` | `bar`, `defrag`, `binary` | Show a progress visualization below the timer |
+| `--viz` | `bar`, `defrag`, `binary`, `bubble`, `merge`, `quick` | Show a progress visualization below the timer |
 | `--font` | `block`, `slim`, `dot` | Timer digit style (default: `block`) |
 
 ## Controls
