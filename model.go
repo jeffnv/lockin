@@ -11,6 +11,7 @@ import (
 )
 
 type tickMsg time.Time
+type vizTickMsg struct{}
 type togglePauseMsg struct{}
 type blockerStoppedMsg struct{}
 
@@ -33,6 +34,14 @@ type model struct {
 
 	defragOriginal []uint8 // original random layout: 1=data, 0=free
 	defragWidth    int
+
+	sortFrames [][]int // pre-computed animation frames for sort vizs
+	sortWidth  int     // elements per row
+
+	lastTickAt time.Time // wall clock at last second-tick, for sub-second interpolation
+
+	binaryPrevBits []bool      // previous bit states for phosphor fade
+	binaryOffAt    []time.Time // when each bit last turned off
 }
 
 func newModel(cfg config) model {
@@ -54,10 +63,27 @@ func doTick() tea.Cmd {
 	})
 }
 
+func doVizTick() tea.Cmd {
+	return tea.Tick(100*time.Millisecond, func(t time.Time) tea.Msg {
+		return vizTickMsg{}
+	})
+}
+
+func (m model) hasAnimatedViz() bool {
+	switch m.vizMode {
+	case "bar", "binary", "bubble", "merge":
+		return true
+	}
+	return false
+}
+
 func (m model) Init() tea.Cmd {
 	cmds := []tea.Cmd{doTick()}
 	if len(m.blockApps) > 0 {
 		cmds = append(cmds, startBlocker(m.blockApps, m.blockerPaused, m.blockerStop))
+	}
+	if m.hasAnimatedViz() {
+		cmds = append(cmds, doVizTick())
 	}
 	return tea.Batch(cmds...)
 }
@@ -71,6 +97,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.vizMode == "defrag" {
 			m.initDefragGrid()
 		}
+		if m.vizMode == "bubble" || m.vizMode == "merge" {
+			m.initSortGrid()
+		}
 		return m, nil
 
 	case tea.KeyMsg:
@@ -82,6 +111,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case " ":
 			m.paused = !m.paused
 			m.blockerPaused.Store(m.paused)
+			if !m.paused && m.hasAnimatedViz() {
+				m.lastTickAt = time.Now()
+				return m, doVizTick()
+			}
 			return m, nil
 		}
 		return m, nil
@@ -89,13 +122,27 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case togglePauseMsg:
 		m.paused = !m.paused
 		m.blockerPaused.Store(m.paused)
+		if !m.paused && m.hasAnimatedViz() {
+			m.lastTickAt = time.Now()
+			return m, doVizTick()
+		}
 		return m, nil
+
+	case vizTickMsg:
+		if m.paused || m.done {
+			return m, nil
+		}
+		return m, doVizTick()
 
 	case tickMsg:
 		if m.paused || m.done {
 			return m, doTick()
 		}
 		m.remaining -= time.Second
+		m.lastTickAt = time.Now()
+		if m.vizMode == "binary" {
+			m.updateBinaryFade()
+		}
 		if m.remaining <= 0 {
 			m.remaining = 0
 			m.done = true
