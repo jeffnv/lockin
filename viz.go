@@ -189,8 +189,12 @@ func (m model) renderDefrag() string {
 // --- Sort (bubble / merge) ---
 
 func rainbowColor(value, total int) lipgloss.Color {
+	return rainbowColorL(value, total, 0.5)
+}
+
+func rainbowColorL(value, total int, lightness float64) lipgloss.Color {
 	h := float64(value) / float64(total)
-	r, g, b := hslToRGB(hsl{h, 1.0, 0.5})
+	r, g, b := hslToRGB(hsl{h, 1.0, lightness})
 	return lipgloss.Color(rgbToHex(r, g, b))
 }
 
@@ -247,6 +251,18 @@ func (m model) renderSort() string {
 	frame := m.sortFrames[idx]
 	total := len(frame)
 
+	// Glow map: find most recent change per cell, decay over trail
+	const trailLen = 8
+	glow := make([]float64, total)
+	for i := range frame {
+		for j := idx; j > idx-trailLen && j > 0; j-- {
+			if m.sortFrames[j][i] != m.sortFrames[j-1][i] {
+				glow[i] = 1.0 - float64(idx-j)/float64(trailLen)
+				break
+			}
+		}
+	}
+
 	var rows []string
 	for rowStart := 0; rowStart < total; rowStart += m.sortWidth {
 		end := rowStart + m.sortWidth
@@ -255,9 +271,18 @@ func (m model) renderSort() string {
 		}
 		var row strings.Builder
 		for i := rowStart; i < end; i++ {
-			color := rainbowColor(frame[i], total)
-			style := lipgloss.NewStyle().Foreground(color)
-			row.WriteString(style.Render("██"))
+			// Snap glow to 3 discrete lightness levels (no modifyColor)
+			var l float64
+			switch {
+			case glow[i] > 0.66:
+				l = 0.75
+			case glow[i] > 0.33:
+				l = 0.62
+			default:
+				l = 0.5
+			}
+			color := rainbowColorL(frame[i], total, l)
+			row.WriteString(lipgloss.NewStyle().Foreground(color).Render("██"))
 		}
 		rows = append(rows, row.String())
 	}
