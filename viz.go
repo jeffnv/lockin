@@ -403,9 +403,10 @@ func (m *model) updateBinaryFade() {
 
 	var digits []int
 	if h > 0 {
-		digits = append(digits, h/10, h%10)
+		digits = append(digits, h/10, h%10, min/10, min%10)
+	} else {
+		digits = append(digits, min/10, min%10, sec/10, sec%10)
 	}
-	digits = append(digits, min/10, min%10, sec/10, sec%10)
 
 	bitValues := []int{8, 4, 2, 1}
 	totalBits := len(digits) * 4
@@ -445,9 +446,11 @@ func (m model) renderBinary() string {
 	var groups []digitGroup
 	if h > 0 {
 		groups = append(groups, digitGroup{"H", []int{h / 10, h % 10}})
+		groups = append(groups, digitGroup{"M", []int{min / 10, min % 10}})
+	} else {
+		groups = append(groups, digitGroup{"M", []int{min / 10, min % 10}})
+		groups = append(groups, digitGroup{"S", []int{sec / 10, sec % 10}})
 	}
-	groups = append(groups, digitGroup{"M", []int{min / 10, min % 10}})
-	groups = append(groups, digitGroup{"S", []int{sec / 10, sec % 10}})
 
 	baseColor := m.timerColor()
 	activeStyle := lipgloss.NewStyle().Foreground(baseColor)

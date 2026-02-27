@@ -243,7 +243,7 @@ func (m model) timerTimeStr() string {
 	min := int(m.remaining.Minutes()) % 60
 	sec := int(m.remaining.Seconds()) % 60
 	if h > 0 {
-		return fmt.Sprintf("%d:%02d:%02d", h, min, sec)
+		return fmt.Sprintf("%02d:%02d", h, min)
 	}
 	return fmt.Sprintf("%02d:%02d", min, sec)
 }
