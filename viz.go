@@ -229,15 +229,15 @@ func (m *model) initSortGrid() {
 
 	// Subsample to cap memory usage
 	const maxFrames = 2000
-	if len(frames) > maxFrames {
-		subsampled := make([][]int, maxFrames)
-		for i := range subsampled {
-			subsampled[i] = frames[i*(len(frames)-1)/(maxFrames-1)]
-		}
-		frames = subsampled
+	if len(frames) <= maxFrames {
+		m.sortFrames = frames
+		return
 	}
-
-	m.sortFrames = frames
+	subsampled := make([][]int, maxFrames)
+	for i := range subsampled {
+		subsampled[i] = frames[i*(len(frames)-1)/(maxFrames-1)]
+	}
+	m.sortFrames = subsampled
 }
 
 func (m model) renderSort() string {
