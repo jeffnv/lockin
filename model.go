@@ -45,7 +45,6 @@ type model struct {
 
 	dotPrevCells []bool      // previous on/off state for dot font phosphor
 	dotOnAt      []time.Time // when each dot cell last turned on
-	dotOffAt     []time.Time // when each dot cell last turned off
 }
 
 func newModel(cfg config) model {
@@ -237,10 +236,7 @@ func (m model) View() string {
 	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, body)
 }
 
-const (
-	dotFlareDuration = 400 * time.Millisecond
-	dotFadeDuration  = 800 * time.Millisecond
-)
+const dotFlareDuration = 150 * time.Millisecond
 
 func (m model) timerTimeStr() string {
 	h := int(m.remaining.Hours())
@@ -311,7 +307,6 @@ func (m *model) updateDotFade() {
 	if len(m.dotPrevCells) != total {
 		m.dotPrevCells = currentCells
 		m.dotOnAt = make([]time.Time, total)
-		m.dotOffAt = make([]time.Time, total)
 		now := time.Now()
 		for i, on := range currentCells {
 			if on {
@@ -325,9 +320,6 @@ func (m *model) updateDotFade() {
 	for i := range currentCells {
 		if !m.dotPrevCells[i] && currentCells[i] {
 			m.dotOnAt[i] = now
-		}
-		if m.dotPrevCells[i] && !currentCells[i] {
-			m.dotOffAt[i] = now
 		}
 	}
 	m.dotPrevCells = currentCells
@@ -424,25 +416,9 @@ func (m model) renderBigTimer() string {
 							})
 						}
 					}
-					rowStr.WriteString(lipgloss.NewStyle().Foreground(color).Render("●"))
+					rowStr.WriteString(lipgloss.NewStyle().Foreground(color).Render("● "))
 				} else {
-					rendered := false
-					if cellIdx < len(m.dotOffAt) && !m.dotOffAt[cellIdx].IsZero() {
-						elapsed := time.Since(m.dotOffAt[cellIdx])
-						if elapsed < dotFadeDuration {
-							fade := 1.0 - float64(elapsed)/float64(dotFadeDuration)
-							fadeColor := modifyColor(baseColor, func(c hsl) hsl {
-								c.l = clamp01(fade * 0.35)
-								c.s = c.s * fade
-								return c
-							})
-							rowStr.WriteString(lipgloss.NewStyle().Foreground(fadeColor).Render("●"))
-							rendered = true
-						}
-					}
-					if !rendered {
-						rowStr.WriteRune(' ')
-					}
+					rowStr.WriteString("  ")
 				}
 			}
 		}
