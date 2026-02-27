@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"math"
 	"math/rand"
 	"strings"
@@ -58,47 +57,99 @@ func (m model) renderViz() string {
 
 // --- Bar ---
 
-func (m model) renderBar() string {
-	maxWidth := 60
+const barSliceDuration = time.Second
+
+func (m model) barMetrics() (maxWidth, sliceWidth, numSlices int) {
+	maxWidth = 60
 	if m.width-4 < maxWidth {
 		maxWidth = m.width - 4
 	}
 	if maxWidth < 10 {
 		maxWidth = 10
 	}
+	totalSec := int(m.totalDuration.Seconds())
+	numSlices = totalSec
+	if numSlices > maxWidth {
+		numSlices = maxWidth
+	}
+	if numSlices < 1 {
+		numSlices = 1
+	}
+	sliceWidth = maxWidth / numSlices
+	if sliceWidth < 1 {
+		sliceWidth = 1
+	}
+	return
+}
+
+func (m *model) updateBarSlice() {
+	maxWidth, sliceWidth, numSlices := m.barMetrics()
 
 	frac := m.progressFraction()
-	filled := int(frac * float64(maxWidth))
+	filledSlices := int(frac * float64(numSlices))
+	if filledSlices > numSlices {
+		filledSlices = numSlices
+	}
+	filled := filledSlices * sliceWidth
 	if filled > maxWidth {
 		filled = maxWidth
 	}
 
+	// If current animation is done, settle one slice forward
+	if !m.barSliceAt.IsZero() && time.Since(m.barSliceAt) >= barSliceDuration {
+		m.barPrevFilled += sliceWidth
+		if m.barPrevFilled > maxWidth {
+			m.barPrevFilled = maxWidth
+		}
+		m.barSliceAt = time.Time{}
+	}
+
+	// If bar needs to advance and no animation is running, start one
+	if filled > m.barPrevFilled && m.barSliceAt.IsZero() {
+		// If more than one slice behind, snap to catch up
+		if filled > m.barPrevFilled+sliceWidth {
+			m.barPrevFilled = filled - sliceWidth
+		}
+		m.barSliceAt = time.Now()
+	}
+}
+
+func (m model) renderBar() string {
+	maxWidth, sliceWidth, _ := m.barMetrics()
+
+	settled := m.barPrevFilled
 	baseColor := m.timerColor()
-	pulsePos, pulseW := neonPulse(float64(maxWidth))
+
+	// Slice animation: the block slides in from the right
+	var slicePos float64 = -1
+	if !m.barSliceAt.IsZero() {
+		elapsed := time.Since(m.barSliceAt)
+		if elapsed < barSliceDuration {
+			sliceFrac := float64(elapsed) / float64(barSliceDuration)
+			target := float64(settled)
+			start := float64(maxWidth)
+			slicePos = start + (target-start)*sliceFrac
+		}
+	}
+
+	sliceIdx := int(slicePos)
+	bright := modifyColor(baseColor, func(c hsl) hsl {
+		c.l = clamp01(c.l + 0.3)
+		return c
+	})
 
 	var bar strings.Builder
 	for i := 0; i < maxWidth; i++ {
-		boost := pulseBoost(float64(i), pulsePos, pulseW)
-		var base lipgloss.Color
-		var ch string
-		if i < filled {
-			base = baseColor
-			ch = "█"
+		if slicePos >= 0 && i >= sliceIdx && i < sliceIdx+sliceWidth {
+			bar.WriteString(lipgloss.NewStyle().Foreground(bright).Render("█"))
+		} else if i < settled {
+			bar.WriteString(lipgloss.NewStyle().Foreground(baseColor).Render("█"))
 		} else {
-			base = colorDim
-			ch = "░"
+			bar.WriteString(lipgloss.NewStyle().Foreground(colorDim).Render("░"))
 		}
-		color := modifyColor(base, func(c hsl) hsl {
-			c.l = clamp01(c.l + boost*0.35)
-			return c
-		})
-		bar.WriteString(lipgloss.NewStyle().Foreground(color).Render(ch))
 	}
 
-	pct := fmt.Sprintf(" %d%%", int(frac*100))
-	pctStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("7"))
-
-	return bar.String() + pctStyle.Render(pct)
+	return bar.String()
 }
 
 // --- Defrag ---

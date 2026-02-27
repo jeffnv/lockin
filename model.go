@@ -44,6 +44,9 @@ type model struct {
 	binaryOnAt     []time.Time // when each bit last turned on
 	binaryOffAt    []time.Time // when each bit last turned off
 
+	barPrevFilled int       // previous filled count for slice animation
+	barSliceAt    time.Time // when the current slice started animating
+
 	dotPrevCells []bool      // previous on/off state for dot font phosphor
 	dotOnAt      []time.Time // when each dot cell last turned on
 }
@@ -145,6 +148,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case vizTickMsg:
 		if m.paused || m.done {
 			return m, nil
+		}
+		if m.vizMode == "bar" {
+			m.updateBarSlice()
 		}
 		return m, doVizTick()
 
