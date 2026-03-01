@@ -19,7 +19,7 @@ Single `package main`, no subpackages.
 | `model.go` | Bubble Tea model: Init/Update/View, timer logic, rendering |
 | `blocker.go` | App blocker — kills named processes via `pkill` every 5s |
 | `viz.go` | Progress visualizations: bar, defrag, binary (BCD), sort (bubble, merge, quick) |
-| `fonts.go` | Big digit font definitions: block, slim, dot |
+| `fonts.go` | Big digit font definitions: block (7×8), slim (3×4), dot (7×5 LED matrix) |
 | `colors.go` | ANSI color constants, timer color thresholds |
 | `shaders.go` | HSL color math, gradient shader for digit rendering |
 
@@ -31,4 +31,5 @@ Single `package main`, no subpackages.
 - `SIGUSR1` toggles pause externally (e.g., from a Raycast script)
 - Defrag viz generates a random grid on init, then "defragments" it as progress advances
 - Sort vizs (bubble, merge, quick) pre-compute animation frames from a shuffled rainbow array, subsampled to ~2000 frames; cursor glow highlights active changes
+- Dot font renders spaced `●` characters with a 150ms bright flare on newly lit dots; no phosphor decay
 - Gradient shader converts ANSI indices to hex for HSL math, but rendered output uses terminal's ANSI palette
