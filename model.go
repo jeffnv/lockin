@@ -59,11 +59,14 @@ func newModel(cfg config) model {
 		blockerStop:   make(chan struct{}),
 		blockerPaused: &atomic.Bool{},
 	}
-	if m.font == fonts["dot"] {
+	if m.isDotFont() {
 		m.updateDotFade()
 	}
 	return m
 }
+
+func (m model) isDotFont() bool   { return m.font == fonts["dot"] }
+func (m model) isBlockFont() bool { return m.font == fonts["block"] }
 
 func doTick() tea.Cmd {
 	return tea.Tick(time.Second, func(t time.Time) tea.Msg {
@@ -78,7 +81,7 @@ func doVizTick() tea.Cmd {
 }
 
 func (m model) needsFastTick() bool {
-	if m.font == fonts["dot"] {
+	if m.isDotFont() {
 		return true
 	}
 	switch m.vizMode {
@@ -154,8 +157,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.vizMode == "binary" {
 			m.updateBinaryFade()
 		}
-		if m.font == fonts["dot"] {
+		if m.isDotFont() {
 			m.updateDotFade()
+		}
+		// Lazy-init viz grids if WindowSizeMsg hasn't fired yet
+		if m.vizMode == "defrag" && len(m.defragOriginal) == 0 && m.width > 0 {
+			m.initDefragGrid()
+		}
+		if (m.vizMode == "bubble" || m.vizMode == "merge" || m.vizMode == "quick") && len(m.sortFrames) == 0 && m.width > 0 {
+			m.initSortGrid()
 		}
 		if m.remaining <= 0 {
 			m.remaining = 0
@@ -327,8 +337,8 @@ func (m model) renderBigTimer() string {
 	baseColor := m.timerColor()
 	cols := m.timerCols()
 
-	isBlock := m.font == fonts["block"]
-	isDot := m.font == fonts["dot"]
+	isBlock := m.isBlockFont()
+	isDot := m.isDotFont()
 
 	if !isBlock && !isDot {
 		// Default path: per-row gradient (slim font, etc.)
