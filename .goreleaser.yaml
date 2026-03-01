@@ -1,0 +1,25 @@
+version: 2
+
+builds:
+  - main: .
+    binary: lockin
+    ldflags:
+      - -s -w -X main.version={{.Version}}
+    goos:
+      - darwin
+      - linux
+    goarch:
+      - amd64
+      - arm64
+
+archives:
+  - format: tar.gz
+
+brews:
+  - repository:
+      owner: jeffnv
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    homepage: https://github.com/jeffnv/lockin
+    description: Full-screen terminal focus timer
+    license: MIT

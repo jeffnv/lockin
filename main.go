@@ -11,6 +11,8 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
+var version = "dev"
+
 type config struct {
 	duration  time.Duration
 	taskName  string
@@ -30,6 +32,9 @@ func parseArgs(args []string) config {
 
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
+		case "-v", "--version":
+			fmt.Println("lockin " + version)
+			os.Exit(0)
 		case "-h", "--help":
 			printUsage()
 			os.Exit(0)
@@ -104,6 +109,7 @@ func printUsage() {
 Duration formats: 30s, 5m, 30m, 1h, 1h30m
 
 Flags:
+  -v, --version            Print version and exit
   --block App1,App2        Block apps while timer runs
   --viz bar|defrag|binary|bubble|merge|quick
                            Visualization mode
