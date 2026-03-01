@@ -1,8 +1,16 @@
 # lockin
 
-A full-screen terminal focus timer. Set a duration, lock in, get it done.
+A full-screen terminal focus timer that can block any distracting applications. Command line friendly so your AI buddy can help you be productive.
+
+![merge sort visualization](demo_merge.gif)
 
 ## Install
+
+```bash
+brew install jeffnv/tap/lockin
+```
+
+Or with Go:
 
 ```bash
 go install github.com/jeffnv/lockin@latest
@@ -40,9 +48,14 @@ lockin 25m --viz quick                        # quicksort animation
 
 | Flag | Options | Description |
 |---|---|---|
+| `-v`, `--version` | | Print version and exit |
 | `--block` | `App1,App2,...` | Kill listed apps every 5s while the timer runs |
 | `--viz` | `bar`, `defrag`, `binary`, `bubble`, `merge`, `quick` | Show a progress visualization below the timer |
 | `--font` | `block`, `slim`, `dot` | Timer digit style (default: `block`) |
+
+![slim font with binary visualization](demo_slim.gif)
+
+![dot font](demo_dots.gif)
 
 ## Controls
 
