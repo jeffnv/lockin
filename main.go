@@ -47,10 +47,10 @@ func parseArgs(args []string) config {
 			}
 			i++
 			switch args[i] {
-			case "bar", "defrag", "binary":
+			case "bar", "defrag", "binary", "bubble", "merge":
 				cfg.vizMode = args[i]
 			default:
-				fmt.Fprintf(os.Stderr, "error: unknown viz mode %q (use bar, defrag, or binary)\n", args[i])
+				fmt.Fprintf(os.Stderr, "error: unknown viz mode %q (use bar, defrag, binary, bubble, or merge)\n", args[i])
 				os.Exit(1)
 			}
 		case "--font":
@@ -105,7 +105,8 @@ Duration formats: 30s, 5m, 30m, 1h, 1h30m
 
 Flags:
   --block App1,App2        Block apps while timer runs
-  --viz bar|defrag|binary  Visualization mode
+  --viz bar|defrag|binary|bubble|merge
+                           Visualization mode
   --font block|slim|dot    Timer font style
 
 Examples:

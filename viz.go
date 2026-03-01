@@ -2,8 +2,10 @@ package main
 
 import (
 	"fmt"
+	"math"
 	"math/rand"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/lipgloss"
 )
@@ -13,7 +15,30 @@ func (m model) progressFraction() float64 {
 		return 0
 	}
 	elapsed := m.totalDuration - m.remaining
-	return float64(elapsed) / float64(m.totalDuration)
+	// Interpolate sub-second progress using wall clock
+	if !m.paused && !m.done && !m.lastTickAt.IsZero() {
+		elapsed += time.Since(m.lastTickAt)
+	}
+	// Finish viz with 10% of time remaining so the completed state is visible
+	frac := float64(elapsed) / (float64(m.totalDuration) * 0.9)
+	if frac > 1 {
+		frac = 1
+	}
+	return frac
+}
+
+// neonPulse returns the current pulse position and width for a neon sweep effect.
+func neonPulse(width float64) (pos, pulseWidth float64) {
+	const period = 2.0 // seconds per sweep
+	t := math.Mod(float64(time.Now().UnixMilli())/1000.0, period) / period
+	pos = t * width
+	pulseWidth = math.Max(width*0.05, 1.0)
+	return
+}
+
+func pulseBoost(x, pulsePos, pulseWidth float64) float64 {
+	dist := math.Abs(x - pulsePos)
+	return math.Exp(-(dist * dist) / (2 * pulseWidth * pulseWidth))
 }
 
 func (m model) renderViz() string {
@@ -24,6 +49,8 @@ func (m model) renderViz() string {
 		return m.renderDefrag()
 	case "binary":
 		return m.renderBinary()
+	case "bubble", "merge":
+		return m.renderSort()
 	default:
 		return ""
 	}
@@ -45,19 +72,33 @@ func (m model) renderBar() string {
 	if filled > maxWidth {
 		filled = maxWidth
 	}
-	empty := maxWidth - filled
 
-	color := m.timerColor()
-	filledStyle := lipgloss.NewStyle().Foreground(color)
-	emptyStyle := lipgloss.NewStyle().Foreground(colorDim)
+	baseColor := m.timerColor()
+	pulsePos, pulseW := neonPulse(float64(maxWidth))
 
-	bar := filledStyle.Render(strings.Repeat("█", filled)) +
-		emptyStyle.Render(strings.Repeat("░", empty))
+	var bar strings.Builder
+	for i := 0; i < maxWidth; i++ {
+		boost := pulseBoost(float64(i), pulsePos, pulseW)
+		var base lipgloss.Color
+		var ch string
+		if i < filled {
+			base = baseColor
+			ch = "█"
+		} else {
+			base = colorDim
+			ch = "░"
+		}
+		color := modifyColor(base, func(c hsl) hsl {
+			c.l = clamp01(c.l + boost*0.35)
+			return c
+		})
+		bar.WriteString(lipgloss.NewStyle().Foreground(color).Render(ch))
+	}
 
 	pct := fmt.Sprintf(" %d%%", int(frac*100))
 	pctStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("7"))
 
-	return bar + pctStyle.Render(pct)
+	return bar.String() + pctStyle.Render(pct)
 }
 
 // --- Defrag ---
@@ -145,7 +186,192 @@ func (m model) renderDefrag() string {
 	return strings.Join(rows, "\n")
 }
 
+// --- Sort (bubble / merge) ---
+
+func rainbowColor(value, total int) lipgloss.Color {
+	h := float64(value) / float64(total)
+	r, g, b := hslToRGB(hsl{h, 1.0, 0.5})
+	return lipgloss.Color(rgbToHex(r, g, b))
+}
+
+func (m *model) initSortGrid() {
+	w := m.defragGridWidth()
+	h := 4
+	total := w * h
+
+	if m.sortWidth == w && len(m.sortFrames) > 0 {
+		return
+	}
+
+	m.sortWidth = w
+
+	arr := make([]int, total)
+	for i := range arr {
+		arr[i] = i
+	}
+	rand.Shuffle(total, func(i, j int) {
+		arr[i], arr[j] = arr[j], arr[i]
+	})
+
+	var frames [][]int
+	if m.vizMode == "bubble" {
+		frames = bubbleSortFrames(arr)
+	} else {
+		frames = mergeSortFrames(arr)
+	}
+
+	// Subsample to cap memory usage
+	const maxFrames = 2000
+	if len(frames) > maxFrames {
+		subsampled := make([][]int, maxFrames)
+		for i := range subsampled {
+			subsampled[i] = frames[i*(len(frames)-1)/(maxFrames-1)]
+		}
+		frames = subsampled
+	}
+
+	m.sortFrames = frames
+}
+
+func (m model) renderSort() string {
+	if len(m.sortFrames) == 0 || m.sortWidth == 0 {
+		return ""
+	}
+
+	frac := m.progressFraction()
+	idx := int(frac * float64(len(m.sortFrames)-1))
+	if idx >= len(m.sortFrames) {
+		idx = len(m.sortFrames) - 1
+	}
+
+	frame := m.sortFrames[idx]
+	total := len(frame)
+
+	var rows []string
+	for rowStart := 0; rowStart < total; rowStart += m.sortWidth {
+		end := rowStart + m.sortWidth
+		if end > total {
+			end = total
+		}
+		var row strings.Builder
+		for i := rowStart; i < end; i++ {
+			color := rainbowColor(frame[i], total)
+			style := lipgloss.NewStyle().Foreground(color)
+			row.WriteString(style.Render("██"))
+		}
+		rows = append(rows, row.String())
+	}
+
+	return strings.Join(rows, "\n")
+}
+
+func bubbleSortFrames(arr []int) [][]int {
+	a := make([]int, len(arr))
+	copy(a, arr)
+
+	frames := [][]int{append([]int(nil), a...)}
+	n := len(a)
+	for i := 0; i < n-1; i++ {
+		for j := 0; j < n-1-i; j++ {
+			if a[j] > a[j+1] {
+				a[j], a[j+1] = a[j+1], a[j]
+				frames = append(frames, append([]int(nil), a...))
+			}
+		}
+	}
+	return frames
+}
+
+func mergeSortFrames(arr []int) [][]int {
+	a := make([]int, len(arr))
+	copy(a, arr)
+
+	frames := [][]int{append([]int(nil), a...)}
+	mergeSortRec(a, 0, len(a), &frames)
+	return frames
+}
+
+func mergeSortRec(a []int, lo, hi int, frames *[][]int) {
+	if hi-lo <= 1 {
+		return
+	}
+	mid := (lo + hi) / 2
+	mergeSortRec(a, lo, mid, frames)
+	mergeSortRec(a, mid, hi, frames)
+	mergeHalves(a, lo, mid, hi, frames)
+}
+
+func mergeHalves(a []int, lo, mid, hi int, frames *[][]int) {
+	left := make([]int, mid-lo)
+	right := make([]int, hi-mid)
+	copy(left, a[lo:mid])
+	copy(right, a[mid:hi])
+
+	i, j, k := 0, 0, lo
+	for i < len(left) && j < len(right) {
+		if left[i] <= right[j] {
+			a[k] = left[i]
+			i++
+		} else {
+			a[k] = right[j]
+			j++
+		}
+		k++
+		*frames = append(*frames, append([]int(nil), a...))
+	}
+	for i < len(left) {
+		a[k] = left[i]
+		i++
+		k++
+		*frames = append(*frames, append([]int(nil), a...))
+	}
+	for j < len(right) {
+		a[k] = right[j]
+		j++
+		k++
+		*frames = append(*frames, append([]int(nil), a...))
+	}
+}
+
 // --- Binary (BCD) ---
+
+const binaryFadeDuration = 800 * time.Millisecond
+
+func (m *model) updateBinaryFade() {
+	h := int(m.remaining.Hours())
+	min := int(m.remaining.Minutes()) % 60
+	sec := int(m.remaining.Seconds()) % 60
+
+	var digits []int
+	if h > 0 {
+		digits = append(digits, h/10, h%10)
+	}
+	digits = append(digits, min/10, min%10, sec/10, sec%10)
+
+	bitValues := []int{8, 4, 2, 1}
+	totalBits := len(digits) * 4
+
+	currentBits := make([]bool, totalBits)
+	for di, d := range digits {
+		for bi, bv := range bitValues {
+			currentBits[di*4+bi] = d&bv != 0
+		}
+	}
+
+	if len(m.binaryPrevBits) != totalBits {
+		m.binaryPrevBits = currentBits
+		m.binaryOffAt = make([]time.Time, totalBits)
+		return
+	}
+
+	now := time.Now()
+	for i := range currentBits {
+		if m.binaryPrevBits[i] && !currentBits[i] {
+			m.binaryOffAt[i] = now
+		}
+	}
+	m.binaryPrevBits = currentBits
+}
 
 func (m model) renderBinary() string {
 	h := int(m.remaining.Hours())
@@ -164,7 +390,8 @@ func (m model) renderBinary() string {
 	groups = append(groups, digitGroup{"M", []int{min / 10, min % 10}})
 	groups = append(groups, digitGroup{"S", []int{sec / 10, sec % 10}})
 
-	activeStyle := lipgloss.NewStyle().Foreground(m.timerColor())
+	baseColor := m.timerColor()
+	activeStyle := lipgloss.NewStyle().Foreground(baseColor)
 	inactiveStyle := lipgloss.NewStyle().Foreground(colorDim)
 	labelStyle := lipgloss.NewStyle().Foreground(colorDim)
 
@@ -172,6 +399,7 @@ func (m model) renderBinary() string {
 	var rows [4]strings.Builder
 	var labelRow strings.Builder
 
+	col := 0
 	for gi, g := range groups {
 		if gi > 0 {
 			for r := 0; r < 4; r++ {
@@ -190,10 +418,25 @@ func (m model) renderBinary() string {
 				if d&bitValues[r] != 0 {
 					rows[r].WriteString(activeStyle.Render("██"))
 				} else {
+					bitIdx := col*4 + r
+					if bitIdx < len(m.binaryOffAt) && !m.binaryOffAt[bitIdx].IsZero() {
+						elapsed := time.Since(m.binaryOffAt[bitIdx])
+						if elapsed < binaryFadeDuration {
+							fade := 1.0 - float64(elapsed)/float64(binaryFadeDuration)
+							fadeColor := modifyColor(baseColor, func(c hsl) hsl {
+								c.l = clamp01(fade * 0.35)
+								c.s = c.s * fade
+								return c
+							})
+							rows[r].WriteString(lipgloss.NewStyle().Foreground(fadeColor).Render("░░"))
+							continue
+						}
+					}
 					rows[r].WriteString(inactiveStyle.Render("░░"))
 				}
 			}
 			labelRow.WriteString(labelStyle.Render(g.label + " "))
+			col++
 		}
 	}
 
