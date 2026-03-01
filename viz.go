@@ -255,13 +255,16 @@ func (m model) renderSort() string {
 	total := len(frame)
 
 	// Glow map: find most recent change per cell, decay over trail
+	// No glow on the final frame — sort is done
 	const trailLen = 8
 	glow := make([]float64, total)
-	for i := range frame {
-		for j := idx; j > idx-trailLen && j > 0; j-- {
-			if m.sortFrames[j][i] != m.sortFrames[j-1][i] {
-				glow[i] = 1.0 - float64(idx-j)/float64(trailLen)
-				break
+	if idx < len(m.sortFrames)-1 {
+		for i := range frame {
+			for j := idx; j > idx-trailLen && j > 0; j-- {
+				if m.sortFrames[j][i] != m.sortFrames[j-1][i] {
+					glow[i] = 1.0 - float64(idx-j)/float64(trailLen)
+					break
+				}
 			}
 		}
 	}
