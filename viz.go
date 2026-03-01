@@ -394,19 +394,31 @@ func quickSortRec(a []int, lo, hi int, frames *[][]int) {
 
 // --- Binary (BCD) ---
 
-const binaryFadeDuration = 800 * time.Millisecond
+const (
+	binaryFlareDuration = 150 * time.Millisecond
+	binaryFadeDuration  = 100 * time.Millisecond
+)
+
+func (m model) binaryDigits() []int {
+	totalSec := int(m.remaining.Seconds())
+	if totalSec < 0 {
+		totalSec = 0
+	}
+	maxSec := int(m.totalDuration.Seconds())
+	nDigits := 1
+	for n := maxSec; n >= 10; n /= 10 {
+		nDigits++
+	}
+	digits := make([]int, nDigits)
+	for i := nDigits - 1; i >= 0; i-- {
+		digits[i] = totalSec % 10
+		totalSec /= 10
+	}
+	return digits
+}
 
 func (m *model) updateBinaryFade() {
-	h := int(m.remaining.Hours())
-	min := int(m.remaining.Minutes()) % 60
-	sec := int(m.remaining.Seconds()) % 60
-
-	var digits []int
-	if h > 0 {
-		digits = append(digits, h/10, h%10, min/10, min%10)
-	} else {
-		digits = append(digits, min/10, min%10, sec/10, sec%10)
-	}
+	digits := m.binaryDigits()
 
 	bitValues := []int{8, 4, 2, 1}
 	totalBits := len(digits) * 4
@@ -420,12 +432,22 @@ func (m *model) updateBinaryFade() {
 
 	if len(m.binaryPrevBits) != totalBits {
 		m.binaryPrevBits = currentBits
+		m.binaryOnAt = make([]time.Time, totalBits)
 		m.binaryOffAt = make([]time.Time, totalBits)
+		now := time.Now()
+		for i, on := range currentBits {
+			if on {
+				m.binaryOnAt[i] = now
+			}
+		}
 		return
 	}
 
 	now := time.Now()
 	for i := range currentBits {
+		if !m.binaryPrevBits[i] && currentBits[i] {
+			m.binaryOnAt[i] = now
+		}
 		if m.binaryPrevBits[i] && !currentBits[i] {
 			m.binaryOffAt[i] = now
 		}
@@ -434,71 +456,51 @@ func (m *model) updateBinaryFade() {
 }
 
 func (m model) renderBinary() string {
-	h := int(m.remaining.Hours())
-	min := int(m.remaining.Minutes()) % 60
-	sec := int(m.remaining.Seconds()) % 60
-
-	type digitGroup struct {
-		label  string
-		digits []int
-	}
-
-	var groups []digitGroup
-	if h > 0 {
-		groups = append(groups, digitGroup{"H", []int{h / 10, h % 10}})
-		groups = append(groups, digitGroup{"M", []int{min / 10, min % 10}})
-	} else {
-		groups = append(groups, digitGroup{"M", []int{min / 10, min % 10}})
-		groups = append(groups, digitGroup{"S", []int{sec / 10, sec % 10}})
-	}
+	digits := m.binaryDigits()
 
 	baseColor := m.timerColor()
-	activeStyle := lipgloss.NewStyle().Foreground(baseColor)
-	inactiveStyle := lipgloss.NewStyle().Foreground(colorDim)
-	labelStyle := lipgloss.NewStyle().Foreground(colorDim)
+	dimStyle := lipgloss.NewStyle().Foreground(colorDim)
 
 	bitValues := []int{8, 4, 2, 1}
 	var rows [4]strings.Builder
-	var labelRow strings.Builder
 
-	col := 0
-	for gi, g := range groups {
-		if gi > 0 {
+	for di, d := range digits {
+		if di > 0 {
 			for r := 0; r < 4; r++ {
 				rows[r].WriteString("  ")
 			}
-			labelRow.WriteString("  ")
 		}
-		for di, d := range g.digits {
-			if di > 0 {
-				for r := 0; r < 4; r++ {
-					rows[r].WriteString(" ")
-				}
-				labelRow.WriteString(" ")
-			}
-			for r := 0; r < 4; r++ {
-				if d&bitValues[r] != 0 {
-					rows[r].WriteString(activeStyle.Render("██"))
-				} else {
-					bitIdx := col*4 + r
-					if bitIdx < len(m.binaryOffAt) && !m.binaryOffAt[bitIdx].IsZero() {
-						elapsed := time.Since(m.binaryOffAt[bitIdx])
-						if elapsed < binaryFadeDuration {
-							fade := 1.0 - float64(elapsed)/float64(binaryFadeDuration)
-							fadeColor := modifyColor(baseColor, func(c hsl) hsl {
-								c.l = clamp01(fade * 0.35)
-								c.s = c.s * fade
-								return c
-							})
-							rows[r].WriteString(lipgloss.NewStyle().Foreground(fadeColor).Render("░░"))
-							continue
-						}
+		for r := 0; r < 4; r++ {
+			bitIdx := di*4 + r
+			if d&bitValues[r] != 0 {
+				color := baseColor
+				if bitIdx < len(m.binaryOnAt) && !m.binaryOnAt[bitIdx].IsZero() {
+					elapsed := time.Since(m.binaryOnAt[bitIdx])
+					if elapsed < binaryFlareDuration {
+						frac := float64(elapsed) / float64(binaryFlareDuration)
+						color = modifyColor(baseColor, func(c hsl) hsl {
+							c.l = clamp01(c.l + (1.0-frac)*0.4)
+							return c
+						})
 					}
-					rows[r].WriteString(inactiveStyle.Render("░░"))
 				}
+				rows[r].WriteString(lipgloss.NewStyle().Foreground(color).Render("██"))
+			} else {
+				if bitIdx < len(m.binaryOffAt) && !m.binaryOffAt[bitIdx].IsZero() {
+					elapsed := time.Since(m.binaryOffAt[bitIdx])
+					if elapsed < binaryFadeDuration {
+						fade := 1.0 - float64(elapsed)/float64(binaryFadeDuration)
+						fadeColor := modifyColor(baseColor, func(c hsl) hsl {
+							c.l = clamp01(fade * 0.03)
+							c.s = c.s * fade * 0.2
+							return c
+						})
+						rows[r].WriteString(lipgloss.NewStyle().Foreground(fadeColor).Render("░░"))
+						continue
+					}
+				}
+				rows[r].WriteString(dimStyle.Render("░░"))
 			}
-			labelRow.WriteString(labelStyle.Render(g.label + " "))
-			col++
 		}
 	}
 
@@ -506,7 +508,6 @@ func (m model) renderBinary() string {
 	for _, r := range rows {
 		result = append(result, r.String())
 	}
-	result = append(result, labelRow.String())
 
 	return strings.Join(result, "\n")
 }

@@ -41,6 +41,7 @@ type model struct {
 	lastTickAt time.Time // wall clock at last second-tick, for sub-second interpolation
 
 	binaryPrevBits []bool      // previous bit states for phosphor fade
+	binaryOnAt     []time.Time // when each bit last turned on
 	binaryOffAt    []time.Time // when each bit last turned off
 
 	dotPrevCells []bool      // previous on/off state for dot font phosphor
