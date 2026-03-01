@@ -49,7 +49,7 @@ func (m model) renderViz() string {
 		return m.renderDefrag()
 	case "binary":
 		return m.renderBinary()
-	case "bubble", "merge":
+	case "bubble", "merge", "quick":
 		return m.renderSort()
 	default:
 		return ""
@@ -218,10 +218,13 @@ func (m *model) initSortGrid() {
 	})
 
 	var frames [][]int
-	if m.vizMode == "bubble" {
+	switch m.vizMode {
+	case "bubble":
 		frames = bubbleSortFrames(arr)
-	} else {
+	case "merge":
 		frames = mergeSortFrames(arr)
+	case "quick":
+		frames = quickSortFrames(arr)
 	}
 
 	// Subsample to cap memory usage
@@ -356,6 +359,34 @@ func mergeHalves(a []int, lo, mid, hi int, frames *[][]int) {
 		k++
 		*frames = append(*frames, append([]int(nil), a...))
 	}
+}
+
+func quickSortFrames(arr []int) [][]int {
+	a := make([]int, len(arr))
+	copy(a, arr)
+
+	frames := [][]int{append([]int(nil), a...)}
+	quickSortRec(a, 0, len(a)-1, &frames)
+	return frames
+}
+
+func quickSortRec(a []int, lo, hi int, frames *[][]int) {
+	if lo >= hi {
+		return
+	}
+	pivot := a[hi]
+	i := lo
+	for j := lo; j < hi; j++ {
+		if a[j] < pivot {
+			a[i], a[j] = a[j], a[i]
+			*frames = append(*frames, append([]int(nil), a...))
+			i++
+		}
+	}
+	a[i], a[hi] = a[hi], a[i]
+	*frames = append(*frames, append([]int(nil), a...))
+	quickSortRec(a, lo, i-1, frames)
+	quickSortRec(a, i+1, hi, frames)
 }
 
 // --- Binary (BCD) ---

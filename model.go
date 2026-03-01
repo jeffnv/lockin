@@ -71,7 +71,7 @@ func doVizTick() tea.Cmd {
 
 func (m model) hasAnimatedViz() bool {
 	switch m.vizMode {
-	case "bar", "binary", "bubble", "merge":
+	case "bar", "binary", "bubble", "merge", "quick":
 		return true
 	}
 	return false
@@ -97,7 +97,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.vizMode == "defrag" {
 			m.initDefragGrid()
 		}
-		if m.vizMode == "bubble" || m.vizMode == "merge" {
+		if m.vizMode == "bubble" || m.vizMode == "merge" || m.vizMode == "quick" {
 			m.initSortGrid()
 		}
 		return m, nil
