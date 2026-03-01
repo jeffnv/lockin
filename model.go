@@ -20,6 +20,7 @@ type model struct {
 	taskName      string
 	blockApps     []string
 	vizMode       string
+	font *fontData
 
 	paused bool
 	done   bool
@@ -30,8 +31,8 @@ type model struct {
 	blockerStop   chan struct{}
 	blockerPaused *atomic.Bool
 
-	defragCells []bool
-	defragWidth int
+	defragOriginal []uint8 // original random layout: 1=data, 0=free
+	defragWidth    int
 }
 
 func newModel(cfg config) model {
@@ -41,6 +42,7 @@ func newModel(cfg config) model {
 		taskName:      cfg.taskName,
 		blockApps:     cfg.blockApps,
 		vizMode:       cfg.vizMode,
+		font:          fonts[cfg.fontStyle],
 		blockerStop:   make(chan struct{}),
 		blockerPaused: &atomic.Bool{},
 	}
@@ -100,9 +102,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.shutdown()
 			return m, tea.Quit
 		}
-		if m.vizMode == "defrag" {
-			m.flipDefragCells()
-		}
 		return m, doTick()
 
 	case blockerStoppedMsg:
@@ -131,7 +130,7 @@ func (m model) View() string {
 	if m.taskName != "" {
 		style := lipgloss.NewStyle().
 			Bold(true).
-			Foreground(lipgloss.Color("#AAAAAA"))
+			Foreground(lipgloss.Color("7"))
 		sections = append(sections, style.Render(m.taskName))
 	}
 
@@ -145,7 +144,7 @@ func (m model) View() string {
 	if m.paused {
 		style := lipgloss.NewStyle().
 			Bold(true).
-			Foreground(lipgloss.Color("#FFAA00"))
+			Foreground(lipgloss.Color("11"))
 		sections = append(sections, "")
 		sections = append(sections, style.Render("PAUSED"))
 	}
@@ -179,21 +178,40 @@ func (m model) renderBigTimer() string {
 		timeStr = fmt.Sprintf("%02d:%02d", min, sec)
 	}
 
-	color := m.timerColor()
-	style := lipgloss.NewStyle().Foreground(color)
+	baseColor := m.timerColor()
 
-	var rendered []string
+	// Build glyph columns for row-by-row gradient rendering
+	type glyphCol struct {
+		rows []string
+	}
+	var cols []glyphCol
 	for i, ch := range timeStr {
-		rendered = append(rendered, style.Render(bigDigit(ch)))
-		// Add spacer between digits (but not after colon or before colon)
+		if rows, ok := m.font.digits[ch]; ok {
+			cols = append(cols, glyphCol{rows})
+		}
 		if i < len(timeStr)-1 {
 			nextCh := rune(timeStr[i+1])
 			if ch != ':' && nextCh != ':' {
-				rendered = append(rendered, style.Render(digitSpacer()))
+				spacerRows := make([]string, m.font.height)
+				for j := range spacerRows {
+					spacerRows[j] = " "
+				}
+				cols = append(cols, glyphCol{spacerRows})
 			}
 		}
 	}
-	return lipgloss.JoinHorizontal(lipgloss.Top, rendered...)
+
+	var renderedRows []string
+	for row := 0; row < m.font.height; row++ {
+		color := shaderGradient(row, 0, m.font.height, len(cols), baseColor, 0)
+		style := lipgloss.NewStyle().Foreground(color)
+		var rowStr strings.Builder
+		for _, c := range cols {
+			rowStr.WriteString(style.Render(c.rows[row]))
+		}
+		renderedRows = append(renderedRows, rowStr.String())
+	}
+	return strings.Join(renderedRows, "\n")
 }
 
 func (m model) renderBlockedApps() string {
@@ -202,6 +220,6 @@ func (m model) renderBlockedApps() string {
 		parts = append(parts, "🔒 "+app)
 	}
 	style := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#666666"))
+		Foreground(colorDim)
 	return style.Render(strings.Join(parts, "  "))
 }

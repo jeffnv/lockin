@@ -16,6 +16,7 @@ type config struct {
 	taskName  string
 	blockApps []string
 	vizMode   string
+	fontStyle string
 }
 
 func parseArgs(args []string) config {
@@ -46,10 +47,23 @@ func parseArgs(args []string) config {
 			}
 			i++
 			switch args[i] {
-			case "bar", "defrag":
+			case "bar", "defrag", "binary":
 				cfg.vizMode = args[i]
 			default:
-				fmt.Fprintf(os.Stderr, "error: unknown viz mode %q (use bar or defrag)\n", args[i])
+				fmt.Fprintf(os.Stderr, "error: unknown viz mode %q (use bar, defrag, or binary)\n", args[i])
+				os.Exit(1)
+			}
+		case "--font":
+			if i+1 >= len(args) {
+				fmt.Fprintln(os.Stderr, "error: --font requires an argument")
+				os.Exit(1)
+			}
+			i++
+			switch args[i] {
+			case "block", "slim", "dot":
+				cfg.fontStyle = args[i]
+			default:
+				fmt.Fprintf(os.Stderr, "error: unknown font %q (use block, slim, or dot)\n", args[i])
 				os.Exit(1)
 			}
 		default:
@@ -77,6 +91,10 @@ func parseArgs(args []string) config {
 		cfg.taskName = positional[1]
 	}
 
+	if cfg.fontStyle == "" {
+		cfg.fontStyle = "block"
+	}
+
 	return cfg
 }
 
@@ -86,13 +104,15 @@ func printUsage() {
 Duration formats: 30s, 5m, 30m, 1h, 1h30m
 
 Flags:
-  --block App1,App2   Block apps while timer runs (kills them on a loop)
-  --viz bar|defrag    Visualization mode
+  --block App1,App2        Block apps while timer runs
+  --viz bar|defrag|binary  Visualization mode
+  --font block|slim|dot    Timer font style
 
 Examples:
   lockin 30m "deep work"
   lockin 25m --block Safari,Messages,Discord
-  lockin 1h30m --viz defrag`)
+  lockin 1h30m --viz defrag
+  lockin 25m --font slim --viz binary`)
 }
 
 func listenSIGUSR1(p *tea.Program) {
